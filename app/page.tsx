@@ -1,148 +1,121 @@
-return (
-    <main className="min-h-screen bg-slate-950 text-slate-100 dir-rtl font-sans">
-      <div className="fixed inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-40 -left-40 w-96 h-96 bg-amber-500/10 rounded-full blur-3xl" />
-        <div className="absolute top-1/2 -right-40 w-96 h-96 bg-purple-600/10 rounded-full blur-3xl" />
-      </div>
+"use client";
 
-      <div className="relative z-10 max-w-5xl mx-auto px-4 py-12">
-        <header className="text-center mb-12">
-          <h1 className="text-5xl md:text-6xl font-black tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-amber-200 via-amber-400 to-amber-600 mb-4">
-            دستیار صوتی هوشمند
-          </h1>
-          <p className="text-slate-400 text-lg max-w-2xl mx-auto">
-            تبدیل دقیق گفتار به متن و خلاصه‌سازی ساختاریافته جلسات و یادداشت‌ها
-          </p>
+import { useState, useRef, useEffect } from "react";
+
+export default function Home() {
+  const [isRecording, setIsRecording] = useState(false);
+  const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [transcription, setTranscription] = useState("");
+  const [summary, setSummary] = useState("");
+
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaRecorderRef.current = new MediaRecorder(stream);
+      chunksRef.current = [];
+
+      mediaRecorderRef.current.ondataavailable = (e) => {
+        if (e.data.size > 0) chunksRef.current.push(e.data);
+      };
+
+      mediaRecorderRef.current.onstop = () => {
+        const blob = new Blob(chunksRef.current, { type: "audio/webm" });
+        setAudioBlob(blob);
+        setAudioUrl(URL.createObjectURL(blob));
+      };
+
+      mediaRecorderRef.current.start();
+      setIsRecording(true);
+    } catch (err) {
+      alert("دسترسی به میکروفون داده نشد.");
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+    }
+  };
+
+  const handleProcess = async () => {
+    if (!audioBlob) return;
+    setLoading(true);
+
+    try {
+      const formData = new FormData();
+      formData.append("file", audioBlob, "voice.webm");
+
+      const res = await fetch("/api/transcribe", {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = await res.json();
+      if (res.ok) {
+        setTranscription(data.text);
+        setSummary(data.summary);
+      } else {
+        alert(data.error || "خطایی رخ داد");
+      }
+    } catch (err) {
+      alert("ارتباط با سرور برقرار نشد.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <main className="min-h-screen bg-slate-950 text-slate-100 p-8">
+      <div className="max-w-2xl mx-auto space-y-8">
+        <header className="text-center">
+          <h1 className="text-3xl font-bold text-amber-400">دستیار صوتی هوشمند</h1>
         </header>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-16">
-          <div className="p-8 rounded-3xl bg-slate-900/40 border border-slate-800/80 backdrop-blur-xl shadow-2xl flex flex-col justify-between">
-            <div>
-              <div className="flex items-center justify-between mb-8">
-                <h2 className="text-2xl font-bold text-slate-200">ضبط صدا</h2>
-                {isRecording && (
-                  <span className="bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs px-3 py-1 rounded-full font-mono animate-pulse">
-                    {formatTime(recordingTime)}
-                  </span>
-                )}
-              </div>
+        <div className="p-6 rounded-2xl bg-slate-900 border border-slate-800 text-center space-y-4">
+          <button
+            onClick={isRecording ? stopRecording : startRecording}
+            className={px-6 py-3 rounded-xl font-bold ${
+              isRecording ? "bg-red-600 text-white" : "bg-amber-500 text-slate-950"
+            }}
+          >
+            {isRecording ? "توقف ضبط" : "شروع ضبط صدا"}
+          </button>
 
-              <div className="flex flex-col items-center justify-center my-8">
-                <button
-                  onClick={isRecording ? stopRecording : startRecording}
-                  className={
-                    isRecording
-                      ? "w-32 h-32 rounded-full flex items-center justify-center bg-rose-500 shadow-xl shadow-rose-500/50 scale-105 transition-all"
-                      : "w-32 h-32 rounded-full flex items-center justify-center bg-amber-400 shadow-xl shadow-amber-500/20 hover:scale-105 transition-all"
-                  }
-                >
-                  <span className={isRecording ? "text-4xl text-white animate-pulse" : "text-4xl text-slate-950"}>
-                    {isRecording ? "⏹" : "🎙"}
-                  </span>
-                </button>
-                <p className="mt-6 text-sm text-slate-400 font-medium">
-                  {isRecording ? "در حال ضبط... جهت توقف کلیک کنید" : "برای شروع ضبط روی میکروفون کلیک کنید"}
-                </p>
-              </div>
-
-              {audioUrl && (
-                <div className="mt-4 p-4 rounded-xl bg-slate-950/60 border border-slate-800">
-                  <audio src={audioUrl} controls className="w-full" />
-                </div>
-              )}
+          {audioUrl && (
+            <div className="mt-4">
+              <audio src={audioUrl} controls className="w-full" />
             </div>
+          )}
 
-            <button
-              onClick={handleUploadAndProcess}
-              disabled={!audioBlob || loading}
-              className={
-                !audioBlob || loading
-                  ? "w-full mt-8 py-4 rounded-xl font-bold text-lg bg-slate-800 text-slate-600 cursor-not-allowed"
-                  : "w-full mt-8 py-4 rounded-xl font-bold text-lg bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-lg shadow-amber-500/20 transition-all"
-              }
-            >
-              {loading ? "در حال پردازش هوش مصنوعی..." : "شروع خلاصه‌سازی و پردازش"}
-            </button>
-          </div>
-
-          <div className="p-8 rounded-3xl bg-slate-900/40 border border-slate-800/80 backdrop-blur-xl shadow-2xl flex flex-col justify-between">
-            <div>
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-2xl font-bold text-slate-200">نتیجه پردازش</h2>
-                {(transcription || summary) && (
-<button
-                    onClick={downloadReport}
-                    className="text-xs bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 px-3 py-1.5 rounded-lg transition-all"
-                  >
-                    :inbox_tray: دانلود فایل TXT
-                  </button>
-                )}
-              </div>
-
-              <div className="space-y-6 overflow-y-auto max-h-[420px] pr-2">
-                {transcription && (
-                  <div className="p-5 rounded-2xl bg-slate-950/60 border border-slate-800">
-                    <h4 className="text-xs font-bold text-amber-400 uppercase tracking-wider mb-2">متن پیاده‌سازی شده (قابل ویرایش):</h4>
-                    <textarea
-                      value={transcription}
-                      onChange={(e) => setTranscription(e.target.value)}
-                      className="w-full bg-transparent text-slate-300 text-sm leading-relaxed focus:outline-none resize-none"
-                      rows={4}
-                    />
-                  </div>
-                )}
-
-                {summary && (
-                  <div className="p-5 rounded-2xl bg-slate-950/60 border border-amber-500/30">
-                    <h4 className="text-xs font-bold text-amber-400 uppercase tracking-wider mb-2">خلاصه و اقدامات (To-Do):</h4>
-                    <div className="text-slate-200 leading-relaxed text-sm whitespace-pre-line">{summary}</div>
-                  </div>
-                )}
-
-                {!transcription && !summary && (
-                  <div className="h-full flex flex-col items-center justify-center text-center py-20 text-slate-600">
-                    <span className="text-5xl mb-4">:sparkles:</span>
-                    <p>پس از ضبط، نتیجه پردازش ویس در این قسمت قرار می‌گیرد.</p>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
+          <button
+            onClick={handleProcess}
+            disabled={!audioBlob || loading}
+            className="w-full py-3 rounded-xl bg-slate-800 text-amber-300 font-bold disabled:opacity-50"
+          >
+            {loading ? "در حال پردازش..." : "ارسال و تحلیل هوش مصنوعی"}
+          </button>
         </div>
 
-        {history.length > 0 && (
-          <section className="mt-12">
-            <div className="flex flex-col md:flex-row items-center justify-between gap-4 mb-6">
-              <h2 className="text-2xl font-bold text-slate-200">تاریخچه ویس‌های اخیر</h2>
-              <input
-                type="text"
-                placeholder=":mag: جستجو در تاریخچه..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="bg-slate-900 border border-slate-800 rounded-xl px-4 py-2 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-amber-500 w-full md:w-64"
-              />
+        {(transcription || summary) && (
+          <div className="p-6 rounded-2xl bg-slate-900 border border-slate-800 space-y-4">
+            <div>
+              <h3 className="text-amber-400 font-bold mb-2">متن پیاده‌سازی شده:</h3>
+              <p className="text-slate-300">{transcription}</p>
             </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {filteredHistory.map((item) => (
-                <div key={item.id} className="p-5 rounded-2xl bg-slate-900/30 border border-slate-800/80 hover:border-slate-700 transition-all">
-                  <div className="text-xs text-amber-500 mb-2">{item.date}</div>
-                  <p className="text-sm text-slate-300 line-clamp-2 mb-3">{item.transcription}</p>
-                  <button
-                    onClick={() => {
-                      setTranscription(item.transcription);
-                      setSummary(item.summary);
-                    }}
-                    className="text-xs text-amber-400 hover:underline"
-                  >
-                    مشاهده جزئیات
-                  </button>
-                </div>
-              ))}
+            <div>
+              <h3 className="text-amber-400 font-bold mb-2">خلاصه جلسه:</h3>
+              <p className="text-slate-300">{summary}</p>
             </div>
-          </section>
+          </div>
         )}
       </div>
     </main>
   );
 }
+
