@@ -1,5 +1,5 @@
 return (
-    <main className="min-h-screen bg-slate-950 text-slate-100 dir-rtl font-sans selection:bg-amber-500 selection:text-black">
+    <main className="min-h-screen bg-slate-950 text-slate-100 dir-rtl font-sans">
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
         <div className="absolute -top-40 -left-40 w-96 h-96 bg-amber-500/10 rounded-full blur-3xl" />
         <div className="absolute top-1/2 -right-40 w-96 h-96 bg-purple-600/10 rounded-full blur-3xl" />
@@ -30,13 +30,13 @@ return (
               <div className="flex flex-col items-center justify-center my-8">
                 <button
                   onClick={isRecording ? stopRecording : startRecording}
-                  className={relative w-32 h-32 rounded-full flex items-center justify-center transition-all duration-500 ${
+                  className={
                     isRecording
-                      ? "bg-rose-500 shadow-2xl shadow-rose-500/50 scale-105"
-                      : "bg-gradient-to-tr from-amber-500 via-amber-400 to-yellow-300 shadow-2xl shadow-amber-500/20 hover:scale-105"
-                  }}
+                      ? "w-32 h-32 rounded-full flex items-center justify-center bg-rose-500 shadow-xl shadow-rose-500/50 scale-105 transition-all"
+                      : "w-32 h-32 rounded-full flex items-center justify-center bg-amber-400 shadow-xl shadow-amber-500/20 hover:scale-105 transition-all"
+                  }
                 >
-                  <span className={text-4xl ${isRecording ? "text-white animate-pulse" : "text-slate-950"}}>
+                  <span className={isRecording ? "text-4xl text-white animate-pulse" : "text-4xl text-slate-950"}>
                     {isRecording ? "⏹" : "🎙"}
                   </span>
                 </button>
@@ -55,11 +55,11 @@ return (
             <button
               onClick={handleUploadAndProcess}
               disabled={!audioBlob || loading}
-              className={w-full mt-8 py-4 rounded-xl font-bold text-lg transition-all duration-300 ${
+              className={
                 !audioBlob || loading
-                  ? "bg-slate-800 text-slate-600 cursor-not-allowed"
-                  : "bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 shadow-xl shadow-amber-500/20 active:scale-[0.98]"
-              }}
+                  ? "w-full mt-8 py-4 rounded-xl font-bold text-lg bg-slate-800 text-slate-600 cursor-not-allowed"
+                  : "w-full mt-8 py-4 rounded-xl font-bold text-lg bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-lg shadow-amber-500/20 transition-all"
+              }
             >
               {loading ? "در حال پردازش هوش مصنوعی..." : "شروع خلاصه‌سازی و پردازش"}
             </button>
@@ -69,8 +69,8 @@ return (
             <div>
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-2xl font-bold text-slate-200">نتیجه پردازش</h2>
-{(transcription || summary) && (
-                  <button
+                {(transcription || summary) && (
+<button
                     onClick={downloadReport}
                     className="text-xs bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 px-3 py-1.5 rounded-lg transition-all"
                   >
