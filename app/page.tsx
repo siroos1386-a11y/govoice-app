@@ -1,131 +1,3 @@
-"use client";
-
-import { useState, useRef, useEffect } from "react";
-
-interface SavedNote {
-  id: string;
-  date: string;
-  transcription: string;
-  summary: string;
-  tags: string[];
-}
-
-export default function Home() {
-  const [isRecording, setIsRecording] = useState(false);
-  const [recordingTime, setRecordingTime] = useState(0);
-  const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
-  const [audioUrl, setAudioUrl] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  const [transcription, setTranscription] = useState("");
-  const [summary, setSummary] = useState("");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [history, setHistory] = useState<SavedNote[]>([]);
-
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const chunksRef = useRef<Blob[]>([]);
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
-
-  useEffect(() => {
-    const saved = localStorage.getItem("govoice_history");
-    if (saved) setHistory(JSON.parse(saved));
-  }, []);
-
-  useEffect(() => {
-    if (isRecording) {
-      timerRef.current = setInterval(() => {
-        setRecordingTime((prev) => prev + 1);
-      }, 1000);
-    } else {
-      if (timerRef.current) clearInterval(timerRef.current);
-      setRecordingTime(0);
-    }
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
-  }, [isRecording]);
-
-  const startRecording = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      mediaRecorderRef.current = new MediaRecorder(stream);
-      chunksRef.current = [];
-
-      mediaRecorderRef.current.ondataavailable = (e) => {
-        if (e.data.size > 0) chunksRef.current.push(e.data);
-      };
-
-      mediaRecorderRef.current.onstop = () => {
-        const blob = new Blob(chunksRef.current, { type: "audio/webm" });
-        setAudioBlob(blob);
-        setAudioUrl(URL.createObjectURL(blob));
-      };
-
-      mediaRecorderRef.current.start();
-      setIsRecording(true);
-    } catch (err) {
-      alert("دسترسی به میکروفون داده نشد.");
-    }
-  };
-
-  const stopRecording = () => {
-    if (mediaRecorderRef.current && isRecording) {
-      mediaRecorderRef.current.stop();
-      setIsRecording(false);
-    }
-  };
-
-  const handleUploadAndProcess = async () => {
-    if (!audioBlob) return;
-    setLoading(true);
-
-    try {
-      const formData = new FormData();
-      formData.append("file", audioBlob, "voice.webm");
-
-      const res = await fetch("/api/transcribe", {
-        method: "POST",
-        body: formData,
-      });
-
-      const data = await res.json();
-      if (res.ok) {
-        setTranscription(data.text);
-        setSummary(data.summary);
-
-        const newNote: SavedNote = {
-          id: Date.now().toString(),
-          date: new Date().toLocaleDateString("fa-IR"),
-          transcription: data.text,
-          summary: data.summary,
-          tags: ["یادداشت صوتی", "هوش مصنوعی"],
-        };
-        const updatedHistory = [newNote, ...history];
-        setHistory(updatedHistory);
-        localStorage.setItem("govoice_history", JSON.stringify(updatedHistory));
-      } else {
-        alert(data.error || "خطایی رخ داد");
-      }
-    } catch (err) {
-      alert("ارتباط با سرور برقرار نشد.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const downloadReport = () => {
-    const content = گزارش دستیار صوتی هوشمند\n\nمتن پیاده‌سازی شده:\n${transcription}\n\nخلاصه و اقدامات:\n${summary};
-    const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = voice-note-${Date.now()}.txt;
-    a.click();
-  };
-
-  const filteredHistory = history.filter((item) =>
-    item.transcription.includes(searchQuery) || item.summary.includes(searchQuery)
-  );
 return (
     <main className="min-h-screen bg-slate-950 text-slate-100 dir-rtl font-sans selection:bg-amber-500 selection:text-black">
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
@@ -136,22 +8,21 @@ return (
       <div className="relative z-10 max-w-5xl mx-auto px-4 py-12">
         <header className="text-center mb-12">
           <h1 className="text-5xl md:text-6xl font-black tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-amber-200 via-amber-400 to-amber-600 mb-4">
-            دستیار صوتی فوق‌هوشمند
+            دستیار صوتی هوشمند
           </h1>
           <p className="text-slate-400 text-lg max-w-2xl mx-auto">
-            پردازش گفتار، خلاصه‌سازی ساختاریافته و مدیریت حرفه‌ای یادداشت‌ها
+            تبدیل دقیق گفتار به متن و خلاصه‌سازی ساختاریافته جلسات و یادداشت‌ها
           </p>
         </header>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-16">
-          {/* پنل ضبط */}
           <div className="p-8 rounded-3xl bg-slate-900/40 border border-slate-800/80 backdrop-blur-xl shadow-2xl flex flex-col justify-between">
             <div>
               <div className="flex items-center justify-between mb-8">
                 <h2 className="text-2xl font-bold text-slate-200">ضبط صدا</h2>
                 {isRecording && (
                   <span className="bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs px-3 py-1 rounded-full font-mono animate-pulse">
-                    {recordingTime} ثانیه
+                    {formatTime(recordingTime)}
                   </span>
                 )}
               </div>
@@ -170,7 +41,7 @@ return (
                   </span>
                 </button>
                 <p className="mt-6 text-sm text-slate-400 font-medium">
-                  {isRecording ? "در حال ضبط... جهت توقف کلیک کنید" : "برای شروع ضبط کلیک کنید"}
+                  {isRecording ? "در حال ضبط... جهت توقف کلیک کنید" : "برای شروع ضبط روی میکروفون کلیک کنید"}
                 </p>
               </div>
 
@@ -190,16 +61,15 @@ return (
                   : "bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 shadow-xl shadow-amber-500/20 active:scale-[0.98]"
               }}
             >
-              {loading ? "در حال پردازش هوش مصنوعی..." : "تحلیل و خلاصه‌سازی هوشمند"}
+              {loading ? "در حال پردازش هوش مصنوعی..." : "شروع خلاصه‌سازی و پردازش"}
             </button>
           </div>
 
-          {/* پنل خروجی و ادیتور */}
           <div className="p-8 rounded-3xl bg-slate-900/40 border border-slate-800/80 backdrop-blur-xl shadow-2xl flex flex-col justify-between">
             <div>
               <div className="flex items-center justify-between mb-6">
-<h2 className="text-2xl font-bold text-slate-200">نتیجه پردازش</h2>
-                {(transcription || summary) && (
+                <h2 className="text-2xl font-bold text-slate-200">نتیجه پردازش</h2>
+{(transcription || summary) && (
                   <button
                     onClick={downloadReport}
                     className="text-xs bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 px-3 py-1.5 rounded-lg transition-all"
@@ -232,7 +102,7 @@ return (
                 {!transcription && !summary && (
                   <div className="h-full flex flex-col items-center justify-center text-center py-20 text-slate-600">
                     <span className="text-5xl mb-4">:sparkles:</span>
-                    <p>نتیجه پردازش صدا اینجا قرار می‌گیرد.</p>
+                    <p>پس از ضبط، نتیجه پردازش ویس در این قسمت قرار می‌گیرد.</p>
                   </div>
                 )}
               </div>
@@ -240,14 +110,13 @@ return (
           </div>
         </div>
 
-        {/* بخش تاریخچه پیشرفته با قابلیت جستجو */}
         {history.length > 0 && (
           <section className="mt-12">
             <div className="flex flex-col md:flex-row items-center justify-between gap-4 mb-6">
-              <h2 className="text-2xl font-bold text-slate-200">تاریخچه آرشیو شده</h2>
+              <h2 className="text-2xl font-bold text-slate-200">تاریخچه ویس‌های اخیر</h2>
               <input
                 type="text"
-                placeholder=":mag: جستجو در یادداشت‌ها..."
+                placeholder=":mag: جستجو در تاریخچه..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="bg-slate-900 border border-slate-800 rounded-xl px-4 py-2 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-amber-500 w-full md:w-64"
@@ -256,11 +125,8 @@ return (
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {filteredHistory.map((item) => (
-                <div key={item.id} className="p-5 rounded-2xl bg-slate-900/30 border border-slate-800 hover:border-slate-700 transition-all">
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="text-xs text-amber-500">{item.date}</span>
-                    <span className="text-[10px] bg-slate-800 text-slate-400 px-2 py-0.5 rounded">آرشیو</span>
-                  </div>
+                <div key={item.id} className="p-5 rounded-2xl bg-slate-900/30 border border-slate-800/80 hover:border-slate-700 transition-all">
+                  <div className="text-xs text-amber-500 mb-2">{item.date}</div>
                   <p className="text-sm text-slate-300 line-clamp-2 mb-3">{item.transcription}</p>
                   <button
                     onClick={() => {
@@ -269,7 +135,7 @@ return (
                     }}
                     className="text-xs text-amber-400 hover:underline"
                   >
-                    نمایش کامل
+                    مشاهده جزئیات
                   </button>
                 </div>
               ))}
@@ -280,4 +146,3 @@ return (
     </main>
   );
 }
-
