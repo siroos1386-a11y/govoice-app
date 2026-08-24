@@ -1,59 +1,87 @@
 "use client";
-import { useState, useRef } from "react";
+
+import { useState, useRef, useEffect } from "react";
+
+interface SavedNote {
+  id: string;
+  date: string;
+  transcription: string;
+  summary: string;
+  tags: string[];
+}
 
 export default function Home() {
   const [isRecording, setIsRecording] = useState(false);
+  const [recordingTime, setRecordingTime] = useState(0);
+  const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const [transcription, setTranscription] = useState("");
   const [summary, setSummary] = useState("");
-  const [transcriptionText, setTranscriptionText] = useState("");
-  const [isProcessing, setIsProcessing] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [history, setHistory] = useState<SavedNote[]>([]);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<Blob[]>([]);
+  const chunksRef = useRef<Blob[]>([]);
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    const saved = localStorage.getItem("govoice_history");
+    if (saved) setHistory(JSON.parse(saved));
+  }, []);
+
+  useEffect(() => {
+    if (isRecording) {
+      timerRef.current = setInterval(() => {
+        setRecordingTime((prev) => prev + 1);
+      }, 1000);
+    } else {
+      if (timerRef.current) clearInterval(timerRef.current);
+      setRecordingTime(0);
+    }
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [isRecording]);
 
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       mediaRecorderRef.current = new MediaRecorder(stream);
-      audioChunksRef.current = [];
+      chunksRef.current = [];
 
-      mediaRecorderRef.current.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          audioChunksRef.current.push(event.data);
-        }
+      mediaRecorderRef.current.ondataavailable = (e) => {
+        if (e.data.size > 0) chunksRef.current.push(e.data);
       };
 
-      mediaRecorderRef.current.onstop = async () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: "audio/webm" });
-        const url = URL.createObjectURL(audioBlob);
-        setAudioUrl(url);
-
-        // ارسال فایل صوتی واقعی به بک‌اند
-        await sendAudioToApi(audioBlob);
+      mediaRecorderRef.current.onstop = () => {
+        const blob = new Blob(chunksRef.current, { type: "audio/webm" });
+        setAudioBlob(blob);
+        setAudioUrl(URL.createObjectURL(blob));
       };
 
       mediaRecorderRef.current.start();
       setIsRecording(true);
-      setSummary("");
-      setTranscriptionText("");
     } catch (err) {
-      alert("دسترسی به میکروفون داده نشد یا خطایی رخ داد.");
+      alert("دسترسی به میکروفون داده نشد.");
     }
   };
 
   const stopRecording = () => {
     if (mediaRecorderRef.current && isRecording) {
       mediaRecorderRef.current.stop();
-      mediaRecorderRef.current.stream.getTracks().forEach((track) => track.stop());
       setIsRecording(false);
     }
   };
 
-  const sendAudioToApi = async (blob: Blob) => {
-    setIsProcessing(true);
+  const handleUploadAndProcess = async () => {
+    if (!audioBlob) return;
+    setLoading(true);
+
     try {
       const formData = new FormData();
-      formData.append("file", blob, "voice.webm");
+      formData.append("file", audioBlob, "voice.webm");
 
       const res = await fetch("/api/transcribe", {
         method: "POST",
@@ -61,119 +89,195 @@ export default function Home() {
       });
 
       const data = await res.json();
-
       if (res.ok) {
-        setTranscriptionText(data.text);
+        setTranscription(data.text);
         setSummary(data.summary);
+
+        const newNote: SavedNote = {
+          id: Date.now().toString(),
+          date: new Date().toLocaleDateString("fa-IR"),
+          transcription: data.text,
+          summary: data.summary,
+          tags: ["یادداشت صوتی", "هوش مصنوعی"],
+        };
+        const updatedHistory = [newNote, ...history];
+        setHistory(updatedHistory);
+        localStorage.setItem("govoice_history", JSON.stringify(updatedHistory));
       } else {
-        alert("خطا در پردازش هوش مصنوعی: " + data.error);
+        alert(data.error || "خطایی رخ داد");
       }
-    } catch (error) {
+    } catch (err) {
       alert("ارتباط با سرور برقرار نشد.");
     } finally {
-      setIsProcessing(false);
+      setLoading(false);
     }
   };
 
-  return (
-    <div className="min-h-screen bg-[#0d1117] text-slate-100 font-sans p-6 md:p-12 flex flex-col items-center justify-between">
-      {/* هدر */}
-      <header className="w-full max-w-5xl flex justify-between items-center py-4 border-b border-slate-800/80 mb-8">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center font-bold text-lg shadow-lg shadow-blue-500/20">
-            🎙️
-          </div>
-          <span className="font-bold text-xl tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white to-slate-400">
-            VoiceAction AI
-          </span>
-        </div>
-        <nav className="hidden sm:flex gap-6 text-sm text-slate-400">
-          <a href="#" className="hover:text-white transition">داشبورد</a>
-          <a href="#" className="hover:text-white transition">یادداشت‌های من</a>
-          <a href="#" className="hover:text-white transition">تنظیمات</a>
-        </nav>
-      </header>
+  const downloadReport = () => {
+    const content = گزارش دستیار صوتی هوشمند\n\nمتن پیاده‌سازی شده:\n${transcription}\n\nخلاصه و اقدامات:\n${summary};
+    const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = voice-note-${Date.now()}.txt;
+    a.click();
+  };
 
-      {/* محتوای اصلی */}
-      <main className="w-full max-w-4xl grid grid-cols-1 md:grid-cols-2 gap-8 my-auto">
-        {/* باکس ضبط صدا */}
-        <div className="bg-slate-900/60 backdrop-blur-xl border border-slate-800 rounded-3xl p-8 flex flex-col items-center justify-between shadow-2xl relative overflow-hidden group">
-          <div className="absolute -top-24 -left-24 w-48 h-48 bg-blue-500/10 rounded-full blur-3xl group-hover:bg-blue-500/20 transition duration-500"></div>
+  const filteredHistory = history.filter((item) =>
+    item.transcription.includes(searchQuery) || item.summary.includes(searchQuery)
+  );
+return (
+    <main className="min-h-screen bg-slate-950 text-slate-100 dir-rtl font-sans selection:bg-amber-500 selection:text-black">
+      <div className="fixed inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute -top-40 -left-40 w-96 h-96 bg-amber-500/10 rounded-full blur-3xl" />
+        <div className="absolute top-1/2 -right-40 w-96 h-96 bg-purple-600/10 rounded-full blur-3xl" />
+      </div>
 
-          <div className="text-center z-10">
-            <h2 className="text-2xl font-bold mb-2">دستیار صوتی هوشمند</h2>
-            <p className="text-slate-400 text-sm">ویس خود را ضبط کنید تا AI آن را تبدیل به لیست کار کند.</p>
-          </div>
-{/* دکمه ضبط */}
-          <div className="my-10 flex flex-col items-center z-10">
-            <button
-              onClick={isRecording ? stopRecording : startRecording}
-              className={
-                isRecording
-                  ? "relative w-28 h-28 rounded-full flex items-center justify-center transition-all duration-300 bg-red-500 shadow-[0_0_50px_rgba(239,68,68,0.5)] scale-105"
-                  : "relative w-28 h-28 rounded-full flex items-center justify-center transition-all duration-300 bg-gradient-to-tr from-blue-600 to-indigo-600 hover:scale-105 shadow-[0_0_35px_rgba(37,99,235,0.4)]"
-              }
-            >
-              {isRecording && (
-                <span className="absolute inset-0 rounded-full bg-red-500 animate-ping opacity-75"></span>
-              )}
-              <svg className="w-10 h-10 text-white z-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                {isRecording ? (
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                ) : (
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+      <div className="relative z-10 max-w-5xl mx-auto px-4 py-12">
+        <header className="text-center mb-12">
+          <h1 className="text-5xl md:text-6xl font-black tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-amber-200 via-amber-400 to-amber-600 mb-4">
+            دستیار صوتی فوق‌هوشمند
+          </h1>
+          <p className="text-slate-400 text-lg max-w-2xl mx-auto">
+            پردازش گفتار، خلاصه‌سازی ساختاریافته و مدیریت حرفه‌ای یادداشت‌ها
+          </p>
+        </header>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-16">
+          {/* پنل ضبط */}
+          <div className="p-8 rounded-3xl bg-slate-900/40 border border-slate-800/80 backdrop-blur-xl shadow-2xl flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between mb-8">
+                <h2 className="text-2xl font-bold text-slate-200">ضبط صدا</h2>
+                {isRecording && (
+                  <span className="bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs px-3 py-1 rounded-full font-mono animate-pulse">
+                    {recordingTime} ثانیه
+                  </span>
                 )}
-              </svg>
-            </button>
-            <span className="mt-4 text-xs text-slate-400 font-medium">
-              {isRecording ? "در حال ضبط... (جهت توقف کلیک کنید)" : "جهت شروع ضبط کلیک کنید"}
-            </span>
-          </div>
+              </div>
 
-          {/* پلیر ویس */}
-          {audioUrl && (
-            <div className="w-full z-10 bg-slate-800/50 p-3 rounded-2xl border border-slate-700/50">
-              <audio src={audioUrl} controls className="w-full h-8" />
+              <div className="flex flex-col items-center justify-center my-8">
+                <button
+                  onClick={isRecording ? stopRecording : startRecording}
+                  className={relative w-32 h-32 rounded-full flex items-center justify-center transition-all duration-500 ${
+                    isRecording
+                      ? "bg-rose-500 shadow-2xl shadow-rose-500/50 scale-105"
+                      : "bg-gradient-to-tr from-amber-500 via-amber-400 to-yellow-300 shadow-2xl shadow-amber-500/20 hover:scale-105"
+                  }}
+                >
+                  <span className={text-4xl ${isRecording ? "text-white animate-pulse" : "text-slate-950"}}>
+                    {isRecording ? "⏹" : "🎙"}
+                  </span>
+                </button>
+                <p className="mt-6 text-sm text-slate-400 font-medium">
+                  {isRecording ? "در حال ضبط... جهت توقف کلیک کنید" : "برای شروع ضبط کلیک کنید"}
+                </p>
+              </div>
+
+              {audioUrl && (
+                <div className="mt-4 p-4 rounded-xl bg-slate-950/60 border border-slate-800">
+                  <audio src={audioUrl} controls className="w-full" />
+                </div>
+              )}
             </div>
-          )}
-        </div>
 
-        {/* باکس خروجی هوش مصنوعی */}
-        <div className="bg-slate-900/60 backdrop-blur-xl border border-slate-800 rounded-3xl p-8 flex flex-col justify-between shadow-2xl relative">
-          <div className="flex items-center justify-between mb-4 border-b border-slate-800 pb-3">
-            <h3 className="text-lg font-semibold text-blue-400 flex items-center gap-2">
-              <span>:sparkles:</span> خروجی هوش مصنوعی
-            </h3>
-            {isProcessing && <span className="text-xs text-amber-400 animate-pulse">در حال تبدیل ویس و خلاصه‌سازی...</span>}
+            <button
+              onClick={handleUploadAndProcess}
+              disabled={!audioBlob || loading}
+              className={w-full mt-8 py-4 rounded-xl font-bold text-lg transition-all duration-300 ${
+                !audioBlob || loading
+                  ? "bg-slate-800 text-slate-600 cursor-not-allowed"
+                  : "bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 shadow-xl shadow-amber-500/20 active:scale-[0.98]"
+              }}
+            >
+              {loading ? "در حال پردازش هوش مصنوعی..." : "تحلیل و خلاصه‌سازی هوشمند"}
+            </button>
           </div>
 
-          <div className="flex-1 flex flex-col justify-center overflow-y-auto max-h-[350px]">
-            {summary ? (
-              <div className="space-y-4">
-                {transcriptionText && (
-                  <div className="p-3 bg-slate-800/40 rounded-xl border border-slate-700/40 text-xs text-slate-400">
-                    <span className="font-bold text-slate-300 block mb-1">متن کامل ویس:</span>
-                    {transcriptionText}
+          {/* پنل خروجی و ادیتور */}
+          <div className="p-8 rounded-3xl bg-slate-900/40 border border-slate-800/80 backdrop-blur-xl shadow-2xl flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between mb-6">
+<h2 className="text-2xl font-bold text-slate-200">نتیجه پردازش</h2>
+                {(transcription || summary) && (
+                  <button
+                    onClick={downloadReport}
+                    className="text-xs bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 px-3 py-1.5 rounded-lg transition-all"
+                  >
+                    :inbox_tray: دانلود فایل TXT
+                  </button>
+                )}
+              </div>
+
+              <div className="space-y-6 overflow-y-auto max-h-[420px] pr-2">
+                {transcription && (
+                  <div className="p-5 rounded-2xl bg-slate-950/60 border border-slate-800">
+                    <h4 className="text-xs font-bold text-amber-400 uppercase tracking-wider mb-2">متن پیاده‌سازی شده (قابل ویرایش):</h4>
+                    <textarea
+                      value={transcription}
+                      onChange={(e) => setTranscription(e.target.value)}
+                      className="w-full bg-transparent text-slate-300 text-sm leading-relaxed focus:outline-none resize-none"
+                      rows={4}
+                    />
                   </div>
                 )}
-                <pre dir="rtl" className="whitespace-pre-wrap text-sm text-slate-200 font-sans leading-relaxed text-right">
-                  {summary}
-                </pre>
+
+                {summary && (
+                  <div className="p-5 rounded-2xl bg-slate-950/60 border border-amber-500/30">
+                    <h4 className="text-xs font-bold text-amber-400 uppercase tracking-wider mb-2">خلاصه و اقدامات (To-Do):</h4>
+                    <div className="text-slate-200 leading-relaxed text-sm whitespace-pre-line">{summary}</div>
+                  </div>
+                )}
+
+                {!transcription && !summary && (
+                  <div className="h-full flex flex-col items-center justify-center text-center py-20 text-slate-600">
+                    <span className="text-5xl mb-4">:sparkles:</span>
+                    <p>نتیجه پردازش صدا اینجا قرار می‌گیرد.</p>
+                  </div>
+                )}
               </div>
-            ) : (
-              <div className="text-center text-slate-500 py-12">
-                <p>هنوز ویسی ضبط نشده است.</p>
-                <p className="text-xs mt-1">پس از ضبط، خلاصه‌ی نکات و To-Do لیست واقعی در اینجـا ظاهر می‌شود.</p>
-              </div>
-            )}
+            </div>
           </div>
         </div>
-      </main>
 
-      {/* فوتر */}
-      <footer className="mt-8 text-slate-600 text-xs">
-        طراحی‌شده برای مدیریت هوشمند کارهای روزمره
-      </footer>
-    </div>
+        {/* بخش تاریخچه پیشرفته با قابلیت جستجو */}
+        {history.length > 0 && (
+          <section className="mt-12">
+            <div className="flex flex-col md:flex-row items-center justify-between gap-4 mb-6">
+              <h2 className="text-2xl font-bold text-slate-200">تاریخچه آرشیو شده</h2>
+              <input
+                type="text"
+                placeholder=":mag: جستجو در یادداشت‌ها..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="bg-slate-900 border border-slate-800 rounded-xl px-4 py-2 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-amber-500 w-full md:w-64"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {filteredHistory.map((item) => (
+                <div key={item.id} className="p-5 rounded-2xl bg-slate-900/30 border border-slate-800 hover:border-slate-700 transition-all">
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="text-xs text-amber-500">{item.date}</span>
+                    <span className="text-[10px] bg-slate-800 text-slate-400 px-2 py-0.5 rounded">آرشیو</span>
+                  </div>
+                  <p className="text-sm text-slate-300 line-clamp-2 mb-3">{item.transcription}</p>
+                  <button
+                    onClick={() => {
+                      setTranscription(item.transcription);
+                      setSummary(item.summary);
+                    }}
+                    className="text-xs text-amber-400 hover:underline"
+                  >
+                    نمایش کامل
+                  </button>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+      </div>
+    </main>
   );
 }
+
