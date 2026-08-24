@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef } from "react";
 
 export default function Home() {
   const [isRecording, setIsRecording] = useState(false);
@@ -70,6 +70,11 @@ export default function Home() {
     }
   };
 
+  // تعریف کلاس دکمه به صورت متغیر جداگانه تا هرگز خطای کامپایل ندهد
+  const buttonClass = isRecording 
+    ? "px-6 py-3 rounded-xl font-bold bg-red-600 text-white w-full" 
+    : "px-6 py-3 rounded-xl font-bold bg-amber-500 text-slate-950 w-full";
+
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100 p-8">
       <div className="max-w-2xl mx-auto space-y-8">
@@ -80,9 +85,7 @@ export default function Home() {
         <div className="p-6 rounded-2xl bg-slate-900 border border-slate-800 text-center space-y-4">
           <button
             onClick={isRecording ? stopRecording : startRecording}
-            className={px-6 py-3 rounded-xl font-bold ${
-              isRecording ? "bg-red-600 text-white" : "bg-amber-500 text-slate-950"
-            }}
+            className={buttonClass}
           >
             {isRecording ? "توقف ضبط" : "شروع ضبط صدا"}
           </button>
@@ -118,4 +121,3 @@ export default function Home() {
     </main>
   );
 }
-
